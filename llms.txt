@@ -1,0 +1,29 @@
+# looot-reviews
+
+> Open-source review intelligence. Input: your company or place and its competitors. It pulls reviews from Google Maps, the App Store, Google Play and Tripadvisor through looot, groups them into themes with counts and quotes without an LLM key, tracks rating over time and lists where competitors are weak.
+
+## Run it
+
+- Install: `npm install --ignore-scripts` (pin-guard or your own scan first)
+- Price only, no call: `npm run reviews -- --target "Me Cafe @ Austin TX" --competitors "Rival @ Austin TX" --dry-run`
+- Real pull: `LOOOT_TOKEN=... npm run reviews -- --target "Me Cafe @ Austin TX" --competitors "Rival @ Austin TX" --max-spend 0.10 --out out`
+- Ids for apps and Tripadvisor go in a YAML file: `--config reviews.example.yaml`
+- Look around with invented data: `npm run demo` (web UI on port 3240) or `npm run reviews -- --demo`
+
+## Files
+
+- README.md: what it does, price, signals table, what is not tested
+- src/lib/sources.ts: the endpoint behind each source and its list price. Edit to swap providers.
+- src/lib/normalize.ts: maps provider responses to reviews
+- src/lib/analyze.ts: themes, rating trend, weak spots
+- config/themes.json: the named themes and their keywords
+- skills/looot-reviews/SKILL.md: Claude Code skill that runs the CLI
+
+## Rules an agent must follow
+
+- Always run `--dry-run` first and show the total to the person.
+- Never raise `--max-spend` without being told to.
+- Exit code 1 with "pending" means a call is still running. It is not a failure and not charged twice. Run the same command again.
+- Trustpilot and G2 are not available through looot. Do not promise them.
+- The LLM theme step is off unless REVIEWS_LLM_API_KEY and REVIEWS_LLM_MODEL are set. Do not set them without being told to.
+- Themes on fewer than about 30 reviews are weak evidence. Say so.

@@ -1,0 +1,18 @@
+{
+  "_readme": "Edit freely. A theme is a topic in the review text. A review mentions a theme when it contains any keyword at the start of a word, so 'wait' matches 'waited' and 'waiting'. These run first. Themes the keywords miss are then found by counting repeated phrases.",
+  "minMentions": 2,
+  "themes": {
+    "Staff and service": ["staff", "service", "waiter", "waitress", "server", "rude", "friendly", "helpful", "manager", "employee", "attentive", "welcoming"],
+    "Wait times": ["wait", "slow", "queue", "long time", "took forever", "delay", "took ages", "hour"],
+    "Price and value": ["price", "expensive", "overpriced", "cheap", "cost", "value", "pricey", "worth", "charged", "fee", "refund", "billing", "subscription"],
+    "Quality": ["quality", "fresh", "delicious", "tasty", "taste", "broken", "defective", "well made", "stale", "cold food"],
+    "Cleanliness": ["clean", "dirty", "filthy", "smell", "hygiene", "sticky", "bathroom", "restroom"],
+    "Atmosphere and space": ["atmosphere", "ambiance", "ambience", "noise", "noisy", "loud", "cozy", "parking", "seating", "crowded", "vibe"],
+    "App reliability": ["crash", "bug", "freez", "glitch", "error", "not working", "doesn't work", "doesnt work", "stopped working", "lag"],
+    "Login and account": ["login", "log in", "password", "sign in", "locked out", "verification", "account"],
+    "Customer support": ["support", "no response", "never replied", "ticket", "help desk", "customer care"],
+    "Delivery and orders": ["delivery", "shipping", "arrived", "missing item", "wrong order", "package", "late order"],
+    "Ease of use": ["easy to use", "intuitive", "confusing", "interface", "navigate", "user friendly", "simple to"],
+    "Features": ["feature", "wish it", "missing", "integrat", "option to", "export"]
+  }
+}

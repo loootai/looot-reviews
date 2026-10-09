@@ -1,0 +1,14 @@
+# The company or place you care about, then the ones you compare it with.
+# Names are invented. Replace them. Ids are optional; each one unlocks a source.
+target:
+  name: Marlow & Finch Coffee
+  location: Harbor City
+competitors:
+  - name: Copper Kettle Roasters
+    location: Harbor City
+    # placeId: ChIJ...          skips the place lookup call (Google Maps)
+    # appStoreId: 1234567890    adds App Store reviews
+    # playPackage: com.example.app   adds Google Play reviews
+    # tripadvisorId: g12345-d67890   adds Tripadvisor reviews
+  - name: Tidewater Brew House
+    location: Harbor City
