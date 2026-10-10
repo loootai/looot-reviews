@@ -1,4 +1,8 @@
+<p align="center"><img src="assets/hero.png" alt="looot-reviews" width="100%"></p>
+
 # looot-reviews
+
+[![License](https://img.shields.io/github/license/loootai/looot-reviews)](LICENSE) [![Release](https://img.shields.io/github/v/release/loootai/looot-reviews)](https://github.com/loootai/looot-reviews/releases) [![Docs](https://img.shields.io/badge/docs-docs.looot.ai-12A06A)](https://docs.looot.ai)
 
 An open-source alternative to paid review monitoring such as ReviewTrackers, and to reading Google, App Store and Tripadvisor reviews by hand. ReviewTrackers' pricing page, read on 2026-10-10, says plans start "per location per month, paid annually" but did not show the amount to a browser, so no number is quoted here. This repo reads reviews on demand through one looot key and charges per call. A pull of five companies on Google Maps, two pages each, is at most $0.015 at list prices.
 
@@ -116,3 +120,20 @@ The skill runs `--dry-run` first, shows the total, and runs only after you agree
 ## Licence
 
 MIT, copyright looot. ReviewTrackers, Trustpilot, G2 and Google are trademarks of their owners. This project is not affiliated with them and uses none of their code, text or images.
+
+## Related
+
+Other open-source projects built on [looot](https://looot.ai):
+
+- [looot-intent](https://github.com/loootai/looot-intent): account intent and buying-stage scoring (6sense)
+- [looot-score](https://github.com/loootai/looot-score): lead and ICP fit scoring (MadKudu)
+- [looot-reveal](https://github.com/loootai/looot-reveal): which companies visit your site (RB2B, Clearbit Reveal)
+- [looot-techstack](https://github.com/loootai/looot-techstack): website technologies from several providers (BuiltWith, Wappalyzer)
+- [looot-signals](https://github.com/loootai/looot-signals): hiring, funding and news triggers (TheirStack, Harmonic)
+- [looot-lookalike](https://github.com/loootai/looot-lookalike): lookalike company search (Ocean.io)
+- [looot-ads](https://github.com/loootai/looot-ads): competitor ad board (Foreplay)
+- [looot-battlecards](https://github.com/loootai/looot-battlecards): competitor battlecards (Klue, Crayon)
+- [looot-mentions](https://github.com/loootai/looot-mentions): brand and keyword listening (Brand24)
+- [looot-crm](https://github.com/loootai/looot-crm): a small CRM with buying signals built in
+- [looot-seo](https://github.com/loootai/looot-seo): self-hosted SEO workspace
+- [looot-monitor](https://github.com/loootai/looot-monitor): brand and competitor monitoring with alerts
