@@ -14,30 +14,83 @@ Name your company or place and its competitors. looot-reviews pulls their review
 
 The demo data is invented. Marlow & Finch Coffee, Copper Kettle Roasters and Tidewater Brew House do not exist, and every review was generated from sentence templates. The patterns in it (Copper Kettle is slow and its rating falls, Tidewater is expensive) were planted so the screens have something to show.
 
-## Three ways to run it
+## What you need
 
-**Demo, no account and no token.**
+- Node 22.12 or newer. `package.json` has no `engines` field. Next.js 16 needs 20.9 or newer and the test runner (vitest 5) needs 22.12 or newer. I ran everything below on Node 24.
+- npm. Nothing else for the demo and for `--dry-run`.
+- A looot account and an agent token, only for a real pull. Sign up at https://looot.ai/auth/sign-up. To get a token, run `npm i -g looot` and then `looot login`, which opens a browser approval. Or open the looot web app, go to Settings, "Agent tokens" and create one (https://docs.looot.ai/get-started/sign-in). With no browser, create the token there and `export LOOOT_TOKEN=...`.
+- The token needs the scopes `runs.execute`, `catalog.read`, `runs.read` and `usage.read`.
+- A funded balance. A run needs prepaid credit, the minimum top-up is $5, and signing up adds no credit (https://docs.looot.ai/money).
+- Optional, an LLM API key for the theme merge step (see "Optional LLM step"). Off by default.
+
+There is no Supabase and no sign-in in this repo.
+
+## Try it in one minute
+
+No account and no token.
 
 ```bash
+git clone https://github.com/loootai/looot-reviews.git
+cd looot-reviews
 npm install --ignore-scripts
-npm run demo        # web UI at http://localhost:3240 with invented shops
+npm run demo
 ```
 
-**Headless CLI.** One command in, JSON, CSV and markdown out.
+The web UI opens at http://localhost:3240 (`next dev -p 3240`) with invented shops. `/new` shows the quote page, and in demo mode the run button makes no looot call. If port 3240 is busy, run `NEXT_PUBLIC_DEMO=1 npx next dev -p 3241`. For the same data as files, run `npm run reviews -- --demo --out out`, which writes `out/reviews.json`, `out/reviews.csv` and `out/brief.md` and prints `Demo report written to out. 122 invented reviews, no looot call.`
+
+## Run it with your own data
+
+Copy the example env file. The web UI (Next.js) reads `.env.local`. The CLI does not read any env file, so load it into your shell first.
 
 ```bash
-export LOOOT_TOKEN=...                       # https://looot.ai/settings
-npm run reviews -- --target "Blue Door Cafe @ Austin TX" --competitors "Copper Pot @ Austin TX; Tin Roof @ Austin TX" --dry-run
-npm run reviews -- --config reviews.example.yaml --max-spend 0.10 --out out
+cp .env.example .env.local     # then put your token in LOOOT_TOKEN
+set -a; source .env.local; set +a
 ```
 
-Options: `--sources google_maps,app_store,google_play,tripadvisor`, `--pages 1..5` (default 2, about 20 reviews a page on Google Maps), `--max-spend <usd>` (default 0.50), `--fresh <tag>` to pull again, `--demo` to write the demo report. It writes `reviews.json`, `reviews.csv` and `brief.md`. Exit code 0 is done, 1 means a call failed or is pending, 2 is bad usage. The CLI uses every source an entity has an id for. Google Maps needs only a name.
+| Variable | Required | What it does | Where to get it |
+| --- | --- | --- | --- |
+| `LOOOT_TOKEN` | Yes for a real pull. Not needed for `--dry-run`, `--demo` or `npm run demo`. | The looot agent token. Server side only, never sent to the browser. | `looot login`, or Settings, "Agent tokens" in the looot web app |
+| `LOOOT_API_URL` | Optional | looot API base URL. Default `https://api.looot.ai`. Also used when reading live prices. | Leave unset |
+| `LOOOT_REVIEWS_DATA_DIR` | Optional | Folder where the web UI saves the last pull as `latest.json`. Default `./.looot-data`. | Any folder you own |
+| `NEXT_PUBLIC_DEMO` | Optional | `1` shows the invented demo data and blocks every looot call. `npm run demo` sets it for you. | Do not set it for real pulls |
+| `REVIEWS_LLM_API_KEY` | Optional | Key for the LLM theme step. The step runs only when this and the model are both set. | Your model provider |
+| `REVIEWS_LLM_MODEL` | Optional | Model name for the LLM theme step. | Your model provider |
+| `REVIEWS_LLM_BASE_URL` | Optional | API base for the LLM step. Default `https://api.anthropic.com`. | Your model provider |
 
-**Web UI on the same engine.** `npm run dev`, open `/new`, enter the target and the competitors, press "Show the price", then "Run". The run button works only on a quote you have seen. If the live price rose above the quote, the server refuses with a 409 and asks you to quote again. The web form reads Google Maps only; use the CLI and a YAML file to add the other sources. Supabase and sign-in are not used. The last pull is saved to `.looot-data/latest.json` on your machine.
+Name the target and its competitors on the command line (`--target`, and `--competitors` separated by semicolons), or in a YAML file. `reviews.example.yaml` in this repo has three invented shops and shows the optional ids (`placeId`, `appStoreId`, `playPackage`, `tripadvisorId`) that add sources. A city after `@` helps the Google Maps lookup.
+
+Price first. A dry run needs no token and makes no call. It uses the list prices dated 2026-10-10. This is the real output of `npm run reviews -- --config reviews.example.yaml --dry-run`:
+
+```text
+Plan
+
+  Marlow & Finch Coffee      google_maps  place lookup   serper-places                           1 x $0.0010
+  Marlow & Finch Coffee      google_maps  reviews        serper-reviews                          2 x $0.0010
+  Copper Kettle Roasters     google_maps  place lookup   serper-places                           1 x $0.0010
+  Copper Kettle Roasters     google_maps  reviews        serper-reviews                          2 x $0.0010
+  Tidewater Brew House       google_maps  place lookup   serper-places                           1 x $0.0010
+  Tidewater Brew House       google_maps  reviews        serper-reviews                          2 x $0.0010
+
+  Up to $0.0090 ($0.0060 if each source ends after one page) at list prices dated 2026-10-10. 2 page(s) per source. Spend cap $0.5000.
+
+Dry run: no looot call was made and nothing was written.
+```
+
+Then the real pull. The example shops are invented, so use your own names:
+
+```bash
+npm run reviews -- --target "Blue Door Cafe @ Austin TX" --competitors "Copper Pot @ Austin TX; Tin Roof @ Austin TX" --max-spend 0.10 --out out
+```
+
+Options: `--config <file>`, `--sources google_maps,app_store,google_play,tripadvisor`, `--pages 1..5` (default 2, about 20 reviews a page on Google Maps), `--max-spend <usd>` (default 0.50), `--out <dir>` (default `out`), `--fresh <tag>` to pull again, `--demo` to write the demo report. The CLI uses every source an entity has an id for. Google Maps needs only a name. Before it runs, the CLI reads live prices from the catalog and prints the plan again. Results go to `out/reviews.json`, `out/reviews.csv` and `out/brief.md`. `reviews.json` lists every call under `runs`, each with its `runId`. Exit code 0 is done, 1 means a call failed or is pending, 2 is bad usage.
+
+Web UI on the same engine. Run `npm run dev`, open http://localhost:3000/new, enter the target and the competitors, press "Show the price", then "Run for up to ...". The run button works only on a quote you have seen. If the live price rose above the quote, the server refuses with a 409 and asks you to quote again. The web form reads Google Maps only; use the CLI and a YAML file to add the other sources. The last pull is saved to `.looot-data/latest.json` on your machine.
 
 ![New pull page](docs/screenshots/new-light.png)
 
-## Where the reviews come from
+## Spending
+
+looot shows the price before each paid action, and so does this repo. The CLI prints the plan first and the web UI shows a table and the most the run can cost. The spend cap is `--max-spend` in the CLI, default $0.50, and the "Spend cap" field in the web UI. A pull of five companies on Google Maps, two pages each, is at most $0.015 at list prices.
 
 Prices are per-call list prices in the public looot catalog on 2026-10-10. The CLI reads live prices before running and uses these only for `--dry-run` or when the catalog cannot be read.
 
@@ -51,13 +104,9 @@ Prices are per-call list prices in the public looot catalog on 2026-10-10. The C
 
 Not available: Trustpilot and G2. The public looot catalog has no endpoint for either, so they are dropped, not faked. Other Google Maps review endpoints exist (SearchApi, AnyAPI, Anysite, SerpApi). Swap one in by editing `src/lib/sources.ts`. Each endpoint is pinned with no provider fallback, so the quoted price is the price.
 
-A typical run, the real output of the dry run on five Google Maps companies:
+A typical run is five Google Maps companies at 2 pages each, at most $0.015 (the dry run prints the exact maximum).
 
-```text
-Up to $0.0150 ($0.0100 if each source ends after one page) at list prices dated 2026-10-10. 2 page(s) per source. Spend cap $0.5000.
-```
-
-## Money rules
+Rules the code enforces.
 
 - The price of every call is shown before the call. The CLI prints the plan first. The web UI shows a table and the most the run can cost.
 - A per-run spend cap is enforced before each call. A call that would pass the cap is not made and is marked "blocked".
@@ -65,6 +114,10 @@ Up to $0.0150 ($0.0100 if each source ends after one page) at list prices dated 
 - A run still going when waiting stops is "pending", never "failed". It counts against the cap at its quoted price until it settles, and it ends that source for this run.
 - A failed run costs nothing, and the report says why.
 - Pages after the first happen only when the provider says there are more, so the quote is a maximum.
+
+## Deploy
+
+This repo has no `vercel.json` and no GitHub workflow. The web UI saves the last pull to a local folder (`.looot-data`), which Vercel does not keep between requests and may not let you write, so run it on your own machine or a server with a disk. If you still import it into Vercel, set `LOOOT_TOKEN` as an environment variable, and add the `REVIEWS_LLM_*` variables only if you want the LLM step. The saved board will not last. The CLI needs no deploy. To run it on a schedule, call it from cron or your own CI with `LOOOT_TOKEN` set.
 
 ## How themes are made
 
@@ -74,7 +127,9 @@ No model is needed.
 2. Found themes. For reviews no named theme covers, the code counts single words and adjacent word pairs, keeps the ones that at least 3 reviews (or 3 percent) share, and merges phrases that appear in the same reviews into one theme. This is plain n-gram clustering. It is English only.
 3. Each theme gets the number of reviews that mention it, the share of all reviews, the average rating, a count per company and up to three quotes (the lowest rated, the highest rated and a middle one). A quote is the sentence that holds the keyword, from a review whose rating is shown beside it.
 
-Optional LLM step. Set `REVIEWS_LLM_API_KEY` and `REVIEWS_LLM_MODEL` (and `REVIEWS_LLM_BASE_URL` if you do not use the Anthropic API) and the code sends the theme labels, keywords and two quotes per theme to the model, which answers with groups to merge and short labels. It never sees the full review set, and counts are always recomputed locally from the merged keywords. If the call fails the report keeps the keyword themes and says so in a note. The cost of this call is your model provider's, not looot's.
+### Optional LLM step
+
+Set `REVIEWS_LLM_API_KEY` and `REVIEWS_LLM_MODEL` (and `REVIEWS_LLM_BASE_URL` if you do not use the Anthropic API) and the code sends the theme labels, keywords and two quotes per theme to the model, which answers with groups to merge and short labels. It never sees the full review set, and counts are always recomputed locally from the merged keywords. If the call fails the report keeps the keyword themes and says so in a note. The cost of this call is your model provider's, not looot's.
 
 ## Rating over time and weak spots
 
@@ -91,9 +146,30 @@ A weak spot is a theme where a competitor has 3 or more mentions and either aver
 - Sentiment is the star rating, not text analysis. Themes count words and do not judge tone.
 - Found themes only work on English text. A review set under about 30 reviews gets a warning in the report.
 
-## What is not tested
+## Troubleshooting
 
-No paid looot run was made while building this. The code that turns a provider response into reviews is built from the endpoint descriptions in the catalog, from the field names those providers document, and from fixtures written to match. It reads several alias names for each field and skips rows it cannot read, but the first real pull may show a field it misses. If a provider returns reviews that come out empty, open `out/reviews.json`, send the raw shape in an issue, and add the alias in `src/lib/normalize.ts`. The optional LLM step was tested only against a mocked HTTP endpoint. The unit tests mock all HTTP.
+| What you see | Cause and fix |
+| --- | --- |
+| `LOOOT_TOKEN is not set. Create an agent token at https://looot.ai/settings, or use --dry-run or --demo.` | The CLI found no token. Run `set -a; source .env.local; set +a` or `export LOOOT_TOKEN=...`. The token page is Settings, "Agent tokens" in the looot web app. Exit code 2. |
+| `LOOOT_TOKEN is not set on the server.` (HTTP 501 from the web UI) | Put `LOOOT_TOKEN` in `.env.local` and restart `npm run dev`. |
+| `Demo mode makes no looot call.` (HTTP 403) | You started with `npm run demo` or `NEXT_PUBLIC_DEMO=1`. Use `npm run dev`. |
+| A source shows `failed` with a message and a code in brackets, such as `... (code)` | The message and code come from the looot API. A 401 means the token is wrong, revoked or lacks a scope (it needs `runs.execute`, `catalog.read`, `runs.read`, `usage.read`). A balance error means the account has no credit, so top up at https://docs.looot.ai/money. Failed calls cost nothing. |
+| `Spend cap reached (... of ...).` | The call was marked "blocked" and not made. Raise `--max-spend` if you accept the price. |
+| `The live price could not be read, so the call was not made.` | The catalog price for that endpoint could not be read. Try again, or check `LOOOT_API_URL`. |
+| `Still queued when waiting stopped. Not failed. Run the same command again; the stored run is replayed and not charged twice.` (the status word can differ) | The run is pending. Run the same command again. |
+| `The run ended as blocked. Nothing was charged.` (or `stopped`) | The run ended without a result. Read the run in the looot web app. |
+| `The provider returned no reviews for this input.` | The call worked but the parser found no reviews. Either the place has none, or the response has a shape the parser does not know. See Status below. |
+| `Unknown source: ... Use google_maps, app_store, google_play, tripadvisor. Trustpilot and G2 are not available through looot.` | Fix the `--sources` list. |
+| `--pages must be a whole number from 1 to 5.` | Pass 1 to 5. |
+| `The price changed since you confirmed it. Quote again.` (HTTP 409) | The live price rose after you confirmed. Press "Show the price" again. |
+| `The optional LLM step failed (HTTP 401). Themes are keyword themes.` (the code after HTTP can differ) | Your `REVIEWS_LLM_API_KEY` or model name is wrong. The report still has keyword themes. |
+| `Only N reviews. Themes and weak spots on this few are weak evidence.` | A warning, not an error. Pull more pages or more companies. |
+
+How to file an issue. Open an issue at https://github.com/loootai/looot-reviews/issues with the run id (from `runs` in `out/reviews.json`), the command you used, and the raw response body with secrets removed.
+
+## Status
+
+No paid looot run was made while building this. The code that turns a provider response into reviews is built from the endpoint descriptions in the catalog, from the field names those providers document, and from fixtures written to match. It reads several alias names for each field and skips rows it cannot read, but the first real pull may show a field it misses. If a provider returns reviews that come out empty, open an issue with the raw response (see Troubleshooting), and add the alias in `src/lib/normalize.ts`. The optional LLM step was tested only against a mocked HTTP endpoint. The unit tests mock all HTTP.
 
 ## Develop
 

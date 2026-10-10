@@ -5,7 +5,7 @@ description: Pull customer reviews for a company or place and its competitors (G
 
 # looot-reviews
 
-Runs the `looot-reviews` CLI in this repo. Needs `LOOOT_TOKEN` for a real pull; `--dry-run` and `--demo` need nothing.
+Runs the `looot-reviews` CLI in this repo. Needs `LOOOT_TOKEN` in the shell for a real pull (the CLI does not read `.env.local`); `--dry-run` and `--demo` need nothing. Token and balance setup is in the README under "What you need".
 
 ## Steps
 

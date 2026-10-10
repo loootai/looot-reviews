@@ -10,6 +10,11 @@
 - Ids for apps and Tripadvisor go in a YAML file: `--config reviews.example.yaml`
 - Look around with invented data: `npm run demo` (web UI on port 3240) or `npm run reviews -- --demo`
 
+## Setup in short
+
+- Node 22.12 or newer. Token: `looot login`, or Settings > Agent tokens in the looot web app; scopes runs.execute, catalog.read, runs.read, usage.read. A real pull needs a funded balance (minimum $5).
+- The CLI reads LOOOT_TOKEN from the shell, not from a file. Full steps, env table and troubleshooting are in README.md under "What you need", "Run it with your own data" and "Troubleshooting".
+
 ## Files
 
 - README.md: what it does, price, signals table, what is not tested
