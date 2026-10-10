@@ -134,6 +134,7 @@ Other open-source projects built on [looot](https://looot.ai):
 - [looot-ads](https://github.com/loootai/looot-ads): competitor ad board (Foreplay)
 - [looot-battlecards](https://github.com/loootai/looot-battlecards): competitor battlecards (Klue, Crayon)
 - [looot-mentions](https://github.com/loootai/looot-mentions): brand and keyword listening (Brand24)
+- [looot-warm-leads](https://github.com/loootai/looot-warm-leads): warm leads from LinkedIn intent signals (Gojiberry)
 - [looot-crm](https://github.com/loootai/looot-crm): a small CRM with buying signals built in
 - [looot-seo](https://github.com/loootai/looot-seo): self-hosted SEO workspace
 - [looot-monitor](https://github.com/loootai/looot-monitor): brand and competitor monitoring with alerts
