@@ -1,6 +1,6 @@
 {
   "name": "looot-reviews",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Open-source review intelligence. Reads reviews from Google Maps, the App Store, Google Play and Tripadvisor through looot, groups them into themes and shows where competitors are weak.",
   "license": "MIT",
   "private": true,
