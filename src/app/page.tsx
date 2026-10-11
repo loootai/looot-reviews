@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/auth/guard";
 import { Empty } from "@/components/Empty";
 import { Stars } from "@/components/Stars";
 import { TrendChart } from "@/components/TrendChart";
@@ -7,6 +8,7 @@ import { loadReport } from "@/lib/store";
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
+  await requireAdminPage();
   const report = await loadReport();
   if (!report) return <Empty />;
   const names = new Map(report.entities.map((e) => [e.id, e.name]));

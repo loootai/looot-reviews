@@ -1,7 +1,10 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 import { AppShell, type ShellNavSection } from "@/components/AppShell";
+import { currentCsrf, requireAdminPage } from "@/lib/auth/guard";
+import { isPublicPath } from "@/lib/auth/routes";
 import { IS_DEMO } from "@/lib/clock";
 import { usd } from "@/lib/money";
 import { loadReport } from "@/lib/store";
@@ -38,18 +41,36 @@ export const viewport: Viewport = {
 const themeScript = `(function(){try{var q=new URLSearchParams(location.search).get("theme");var t=q||localStorage.getItem("theme")||"system";var d=t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.classList.toggle("dark",d)}catch(e){}})()`;
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const path = (await headers()).get("x-reviews-path") ?? "";
+  // Public routes (sign-in) render with no stored data and no admin navigation.
+  if (path !== "" && isPublicPath(path)) {
+    return (
+      <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
+        <head>
+          <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        </head>
+        <body className="min-h-dvh bg-page text-ink">
+          <main className="mx-auto min-h-dvh max-w-xl px-4 py-10">{children}</main>
+        </body>
+      </html>
+    );
+  }
+  const gate = await requireAdminPage();
+  const csrf = await currentCsrf();
   const report = await loadReport();
   return (
     <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <meta name="reviews-csrf" content={csrf} />
       </head>
       <body className="min-h-dvh bg-page text-ink">
         <AppShell
           appName="looot-reviews"
           githubHref="https://github.com/loootai/looot-reviews"
           nav={NAV}
-          demoLabel={IS_DEMO ? "Demo data, invented shops and reviews" : undefined}
+          demoLabel={gate.policy.mode === "open-demo" ? "Demo, no sign-in. Invented shops and reviews" : IS_DEMO ? "Demo data, invented shops and reviews" : undefined}
+          signOut={gate.policy.mode === "login"}
           spend={report ? { label: "Spent this pull", spent: usd(report.spendMicros), cap: usd(report.capMicros), ratio: report.capMicros > 0 ? report.spendMicros / report.capMicros : 0 } : undefined}
           primaryAction={{ href: "/new", label: "New pull" }}
         >

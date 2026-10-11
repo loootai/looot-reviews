@@ -23,7 +23,7 @@ The demo data is invented. Marlow & Finch Coffee, Copper Kettle Roasters and Tid
 - A funded balance. A run needs prepaid credit, the minimum top-up is $5, and signing up adds no credit (https://docs.looot.ai/money).
 - Optional, an LLM API key for the theme merge step (see "Optional LLM step"). Off by default.
 
-There is no Supabase and no sign-in in this repo.
+There is no Supabase in this repo. The web UI has one admin password, see "Securing a deployment".
 
 ## Try it in one minute
 
@@ -36,7 +36,7 @@ npm install --ignore-scripts
 npm run demo
 ```
 
-The web UI opens at http://localhost:3240 (`next dev -p 3240`) with invented shops. `/new` shows the quote page, and in demo mode the run button makes no looot call. If port 3240 is busy, run `NEXT_PUBLIC_DEMO=1 npx next dev -p 3241`. For the same data as files, run `npm run reviews -- --demo --out out`, which writes `out/reviews.json`, `out/reviews.csv` and `out/brief.md` and prints `Demo report written to out. 122 invented reviews, no looot call.`
+The web UI opens at http://localhost:3240 (`next dev -p 3240`) with invented shops. `/new` shows the quote page, and in demo mode the run button makes no looot call. The demo has no sign-in and shows a "Demo, no sign-in" badge. `npm run demo` and the app both refuse to open it next to a `LOOOT_TOKEN`, a `REVIEWS_LLM_API_KEY` or a saved pull, unless an admin password is set. If port 3240 is busy, run `NEXT_PUBLIC_DEMO=1 npx next dev -p 3241`. For the same data as files, run `npm run reviews -- --demo --out out`, which writes `out/reviews.json`, `out/reviews.csv` and `out/brief.md` and prints `Demo report written to out. 122 invented reviews, no looot call.`
 
 ## Run it with your own data
 
@@ -52,6 +52,11 @@ set -a; source .env.local; set +a
 | `LOOOT_TOKEN` | Yes for a real pull. Not needed for `--dry-run`, `--demo` or `npm run demo`. | The looot agent token. Server side only, never sent to the browser. | `looot login`, or Settings, "Agent tokens" in the looot web app |
 | `LOOOT_API_URL` | Optional | looot API base URL. Default `https://api.looot.ai`. Also used when reading live prices. | Leave unset |
 | `LOOOT_REVIEWS_DATA_DIR` | Optional | Folder where the web UI saves the last pull as `latest.json`. Default `./.looot-data`. | Any folder you own |
+| `REVIEWS_ADMIN_PASSWORD` | Yes for the web UI outside the demo | Admin password, 12 characters or more. Without it every page except `/login` is closed. | You choose it |
+| `REVIEWS_ADMIN_PASSWORD_HASH` | Optional | Replaces the plain password. Output of `npm run hash-password -- 'your password'`. Wins if both are set. | `npm run hash-password` |
+| `REVIEWS_SPEND_CAP_USD` | Optional | Spend cap for one pull started from the web UI, in dollars. Default `0.50`. The browser cannot change it. | You choose it |
+| `REVIEWS_SESSION_SECRET` | Optional | Key that signs session cookies. Default: derived from the password, so a new password signs everyone out. | Any long random string |
+| `REVIEWS_COOKIE_SECURE` | Optional | Set `0` only to test over plain http in production mode. | Leave unset |
 | `NEXT_PUBLIC_DEMO` | Optional | `1` shows the invented demo data and blocks every looot call. `npm run demo` sets it for you. | Do not set it for real pulls |
 | `REVIEWS_LLM_API_KEY` | Optional | Key for the LLM theme step. The step runs only when this and the model are both set. | Your model provider |
 | `REVIEWS_LLM_MODEL` | Optional | Model name for the LLM theme step. | Your model provider |
@@ -84,13 +89,13 @@ npm run reviews -- --target "Blue Door Cafe @ Austin TX" --competitors "Copper P
 
 Options: `--config <file>`, `--sources google_maps,app_store,google_play,tripadvisor`, `--pages 1..5` (default 2, about 20 reviews a page on Google Maps), `--max-spend <usd>` (default 0.50), `--out <dir>` (default `out`), `--fresh <tag>` to pull again, `--demo` to write the demo report. The CLI uses every source an entity has an id for. Google Maps needs only a name. Before it runs, the CLI reads live prices from the catalog and prints the plan again. Results go to `out/reviews.json`, `out/reviews.csv` and `out/brief.md`. `reviews.json` lists every call under `runs`, each with its `runId`. Exit code 0 is done, 1 means a call failed or is pending, 2 is bad usage.
 
-Web UI on the same engine. Run `npm run dev`, open http://localhost:3000/new, enter the target and the competitors, press "Show the price", then "Run for up to ...". The run button works only on a quote you have seen. If the live price rose above the quote, the server refuses with a 409 and asks you to quote again. The web form reads Google Maps only; use the CLI and a YAML file to add the other sources. The last pull is saved to `.looot-data/latest.json` on your machine.
+Web UI on the same engine. Set `REVIEWS_ADMIN_PASSWORD` in `.env.local`, run `npm run dev`, open http://localhost:3000, sign in, go to `/new`, enter the target and the competitors, press "Show the price", then "Run for up to ...". The run button works only on a quote you have seen. If the live price rose above the quote, the server refuses with a 409 and asks you to quote again. The web form reads Google Maps only; use the CLI and a YAML file to add the other sources. The last pull is saved to `.looot-data/latest.json` on your machine.
 
 ![New pull page](docs/screenshots/new-light.png)
 
 ## Spending
 
-looot shows the price before each paid action, and so does this repo. The CLI prints the plan first and the web UI shows a table and the most the run can cost. The spend cap is `--max-spend` in the CLI, default $0.50, and the "Spend cap" field in the web UI. A pull of five companies on Google Maps, two pages each, is at most $0.015 at list prices.
+looot shows the price before each paid action, and so does this repo. The CLI prints the plan first and the web UI shows a table and the most the run can cost. The spend cap is `--max-spend` in the CLI, default $0.50. In the web UI the cap is `REVIEWS_SPEND_CAP_USD` on the server, default $0.50, and the page only shows it. A pull of five companies on Google Maps, two pages each, is at most $0.015 at list prices.
 
 Prices are per-call list prices in the public looot catalog on 2026-10-10. The CLI reads live prices before running and uses these only for `--dry-run` or when the catalog cannot be read.
 
@@ -117,7 +122,61 @@ Rules the code enforces.
 
 ## Deploy
 
-This repo has no `vercel.json` and no GitHub workflow. The web UI saves the last pull to a local folder (`.looot-data`), which Vercel does not keep between requests and may not let you write, so run it on your own machine or a server with a disk. If you still import it into Vercel, set `LOOOT_TOKEN` as an environment variable, and add the `REVIEWS_LLM_*` variables only if you want the LLM step. The saved board will not last. The CLI needs no deploy. To run it on a schedule, call it from cron or your own CI with `LOOOT_TOKEN` set.
+This repo has no `vercel.json` and no GitHub workflow. The web UI saves the last pull to a local folder (`.looot-data`), which Vercel does not keep between requests and may not let you write, so run it on your own machine or a server with a disk. If you still import it into Vercel, set `LOOOT_TOKEN` and `REVIEWS_ADMIN_PASSWORD` (or `REVIEWS_ADMIN_PASSWORD_HASH`) as environment variables, and add the `REVIEWS_LLM_*` variables only if you want the LLM step. The saved board will not last. The CLI needs no deploy. To run it on a schedule, call it from cron or your own CI with `LOOOT_TOKEN` set.
+
+## Securing a deployment
+
+Versions 0.1.3 and older had no admin authentication. Any person who could reach a running copy could read the saved pull, and could start paid pulls on your looot token and your LLM key. From 0.1.4 every route is either public on purpose or admin, and the admin routes stay closed until you set a password.
+
+### Route map
+
+A test reads `src/app` and fails if a route is missing from `src/lib/auth/routes.ts`, or if an admin route does not call the gate.
+
+| Class | Count | Routes |
+| --- | --- | --- |
+| Public by design | 4 routes | `/api/health`, `/login`, `/api/auth/login`, `/api/auth/logout` |
+| Public static files | 2 | `/favicon.ico`, `/brand/*` |
+| Admin pages | 3 | `/` (overview), `/themes`, `/new` |
+| Admin API | 2 | `/api/quote` (free), `/api/run` (paid: looot balance and the optional LLM key) |
+
+There are no webhooks, server actions or export routes. Any path not listed is treated as admin.
+
+### How the gate works
+
+- `src/proxy.ts` checks every request. Each admin page, the root layout and each admin route handler check again with the same function, so a path the matcher misses is still closed.
+- No password set (and not a clean demo): admin routes answer 503, admin pages redirect to `/login`, which says what to set. Nothing stored is rendered.
+- Password set: a valid session is required. Pages without one redirect to `/login`. API requests get 401.
+- Sign-in compares the password in constant time. A session is a signed token in an httpOnly, SameSite=Lax cookie, Secure in production, valid for 8 hours. 5 wrong passwords from one address lock that address for 15 minutes. 40 wrong passwords from anywhere lock sign-in for everyone for 15 minutes. That also lets an attacker delay you, so use a long password and an IP allow-list too.
+- State-changing admin requests need a same-origin `Origin` header and the per-session token in `x-reviews-csrf`. The layout puts the token in a meta tag and the app's own fetch calls send it.
+- Admin responses carry `Cache-Control: no-store`. All responses carry a Content-Security-Policy with `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`. The CSP allows inline scripts because Next.js needs them.
+- The password and the tokens never reach the client bundle.
+
+### Money
+
+- The cap for a web pull is `REVIEWS_SPEND_CAP_USD` on the server (default $0.50). The request body has no cap field, and a `maxSpendUsd`, `capUsd` or similar value in it is ignored.
+- `/api/run` still needs `confirmedMaxMicros` from a quote the person saw. It refuses with 409 when the live price is higher.
+- A session may start 6 pulls in 10 minutes. The seventh gets 429. The counter lives in memory in one process, so behind several instances rate limit at your proxy too.
+- The same pull can spend a second key, `REVIEWS_LLM_API_KEY`, for the theme step. The route is behind the same gate and limit.
+
+### Setup
+
+```bash
+export REVIEWS_ADMIN_PASSWORD='a password of 12 or more characters'
+# or keep it out of the environment as plain text:
+npm run hash-password -- 'a password of 12 or more characters'   # prints REVIEWS_ADMIN_PASSWORD_HASH=...
+```
+
+Rotate the password by changing the variable and restarting. That signs every session out. The saved pull is `.looot-data/latest.json` (or `LOOOT_REVIEWS_DATA_DIR`), a plain file on the server's disk. Protect it like any file with customer text in it.
+
+The CLI is not behind the password. It runs on your own machine with your own `LOOOT_TOKEN`.
+
+### The stronger option
+
+A shared password is the floor. For anything people other than you can reach, put the app behind a VPN, a private network or an identity-aware proxy (Cloudflare Access, Tailscale, Google IAP, oauth2-proxy), and keep the password on as well. Serve it over HTTPS, because in production the session cookie is Secure and will not stick over plain http. The sign-in limits read the address from `x-forwarded-for`, so run behind a proxy that sets it.
+
+### Not covered
+
+No per-user accounts, no roles, no record of who signed in. The app has one admin.
 
 ## How themes are made
 
@@ -152,6 +211,9 @@ A weak spot is a theme where a competitor has 3 or more mentions and either aver
 | --- | --- |
 | `LOOOT_TOKEN is not set. Create an agent token at https://looot.ai/settings, or use --dry-run or --demo.` | The CLI found no token. Run `set -a; source .env.local; set +a` or `export LOOOT_TOKEN=...`. The token page is Settings, "Agent tokens" in the looot web app. Exit code 2. |
 | `LOOOT_TOKEN is not set on the server.` (HTTP 501 from the web UI) | Put `LOOOT_TOKEN` in `.env.local` and restart `npm run dev`. |
+| `Admin sign-in is not set up.` (HTTP 503) or the page at `/login` says so | Set `REVIEWS_ADMIN_PASSWORD` (12 characters or more) and restart. |
+| `Sign in required.` (HTTP 401) or `Missing or wrong CSRF token. Reload the page.` (HTTP 403) | Sign in again, or reload the page so it picks up the token. |
+| `Too many pulls from this session. Wait ten minutes.` (HTTP 429) | A session may start 6 pulls in 10 minutes. |
 | `Demo mode makes no looot call.` (HTTP 403) | You started with `npm run demo` or `NEXT_PUBLIC_DEMO=1`. Use `npm run dev`. |
 | A source shows `failed` with a message and a code in brackets, such as `... (code)` | The message and code come from the looot API. A 401 means the token is wrong, revoked or lacks a scope (it needs `runs.execute`, `catalog.read`, `runs.read`, `usage.read`). A balance error means the account has no credit, so top up at https://docs.looot.ai/money. Failed calls cost nothing. |
 | `Spend cap reached (... of ...).` | The call was marked "blocked" and not made. Raise `--max-spend` if you accept the price. |

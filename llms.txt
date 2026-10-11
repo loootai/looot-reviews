@@ -8,7 +8,8 @@
 - Price only, no call: `npm run reviews -- --target "Me Cafe @ Austin TX" --competitors "Rival @ Austin TX" --dry-run`
 - Real pull: `LOOOT_TOKEN=... npm run reviews -- --target "Me Cafe @ Austin TX" --competitors "Rival @ Austin TX" --max-spend 0.10 --out out`
 - Ids for apps and Tripadvisor go in a YAML file: `--config reviews.example.yaml`
-- Look around with invented data: `npm run demo` (web UI on port 3240) or `npm run reviews -- --demo`
+- Look around with invented data: `npm run demo` (web UI on port 3240, no sign-in) or `npm run reviews -- --demo`
+- The web UI outside the demo needs `REVIEWS_ADMIN_PASSWORD` (12+ characters). Without it every page except /login is closed.
 
 ## Setup in short
 

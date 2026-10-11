@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/auth/guard";
 import { Empty } from "@/components/Empty";
 import { ThemesView } from "@/components/ThemesView";
 import { loadReport } from "@/lib/store";
@@ -6,6 +7,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Themes" };
 
 export default async function ThemesPage() {
+  await requireAdminPage();
   const report = await loadReport();
   if (!report) return <Empty />;
   return (

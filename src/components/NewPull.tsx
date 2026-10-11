@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { adminFetch } from "./adminFetch";
 import { usdPrecise } from "@/lib/money";
 import type { Plan } from "@/lib/runner";
 import type { Entity } from "@/lib/types";
@@ -14,23 +15,22 @@ interface Quote {
 }
 
 /** Target and competitors in, quote out, then a run button that only works on a quote the person has seen. Google Maps only; the CLI adds the other sources. */
-export function NewPull({ demo, hasToken }: { demo: boolean; hasToken: boolean }) {
+export function NewPull({ demo, hasToken, capMicros }: { demo: boolean; hasToken: boolean; capMicros: number }) {
   const router = useRouter();
   const [target, setTarget] = useState("");
   const [competitors, setCompetitors] = useState("");
   const [pages, setPages] = useState(2);
-  const [cap, setCap] = useState("0.50");
   const [quote, setQuote] = useState<Quote | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const body = (extra: object = {}) => JSON.stringify({ target, competitors, pages, maxSpendUsd: cap, ...extra });
+  const body = (extra: object = {}) => JSON.stringify({ target, competitors, pages, ...extra });
   const reset = () => setQuote(null);
 
   async function getQuote() {
     setBusy(true);
     setMessage(null);
-    const res = await fetch("/api/quote", { method: "POST", headers: { "Content-Type": "application/json" }, body: body() });
+    const res = await adminFetch("/api/quote", { method: "POST", headers: { "Content-Type": "application/json" }, body: body() });
     const json = await res.json();
     setBusy(false);
     if (!res.ok) {
@@ -44,7 +44,7 @@ export function NewPull({ demo, hasToken }: { demo: boolean; hasToken: boolean }
     if (!quote) return;
     setBusy(true);
     setMessage("Running. This can take a minute per source.");
-    const res = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: body({ confirmedMaxMicros: quote.plan.maxMicros }) });
+    const res = await adminFetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: body({ confirmedMaxMicros: quote.plan.maxMicros }) });
     const json = await res.json();
     setBusy(false);
     if (!res.ok) return setMessage(json.error ?? "The run failed.");
@@ -72,9 +72,7 @@ export function NewPull({ demo, hasToken }: { demo: boolean; hasToken: boolean }
             {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} (about {n * 20} reviews)</option>)}
           </select>
         </label>
-        <label className="ml-auto flex items-center gap-2">Spend cap $
-          <input value={cap} onChange={(e) => { setCap(e.target.value); reset(); }} className="num w-20 rounded-control border border-line bg-panel px-2 py-1 text-ink" inputMode="decimal" />
-        </label>
+        <p className="ml-auto">Spend cap <span className="num text-ink">{usdPrecise(capMicros)}</span>, set on the server</p>
       </div>
       <button type="button" onClick={getQuote} disabled={busy || !target.trim()} className="rounded-control border border-line bg-panel px-4 py-2 text-13 font-medium hover:bg-hover disabled:opacity-50">Show the price</button>
 
