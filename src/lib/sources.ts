@@ -24,6 +24,8 @@ export interface CallLine {
   jobId: string;
   /** The most calls this step can make. Pages after the first happen only when the provider says there are more. */
   maxCalls: number;
+  /** The input of the first call when it is known before the run. Lets the quote see that a stored answer exists. */
+  firstInput?: Record<string, unknown>;
 }
 
 export interface SourceDef {
@@ -54,6 +56,9 @@ const googleReviewInput = (e: Entity, token?: string): Record<string, unknown> =
   ...(token ? { nextPageToken: token } : {}),
 });
 
+/** Input of the Google Maps place lookup. No date in it, so its key is the same on every day. */
+const placeLookupInput = (e: Entity): Record<string, unknown> => ({ q: [e.name, e.location].filter(Boolean).join(" "), num: 1 });
+
 /** Pages through a provider that numbers its pages. Stops on an empty page or a refused call. */
 async function numberedPages(e: Entity, ctx: CallCtx, source: SourceId, endpointId: string, jobId: string, input: Record<string, unknown>): Promise<Review[]> {
   const out: Review[] = [];
@@ -75,14 +80,13 @@ export const SOURCE_DEFS: SourceDef[] = [
     label: "Google Maps",
     applies: (e) => Boolean(e.name || e.placeId || e.cid),
     lines: (e, pages) => [
-      ...(e.placeId || e.cid ? [] : [{ step: "place lookup", endpointId: "serper-places", jobId: "maps.place.get", maxCalls: 1 }]),
-      { step: "reviews", endpointId: "serper-reviews", jobId: "maps.place.reviews", maxCalls: pages },
+      ...(e.placeId || e.cid ? [] : [{ step: "place lookup", endpointId: "serper-places", jobId: "maps.place.get", maxCalls: 1, firstInput: placeLookupInput(e) }]),
+      { step: "reviews", endpointId: "serper-reviews", jobId: "maps.place.reviews", maxCalls: pages, ...(e.placeId || e.cid ? { firstInput: googleReviewInput(e) } : {}) },
     ],
     async collect(e, ctx) {
       let target = e;
       if (!e.placeId && !e.cid) {
-        const q = [e.name, e.location].filter(Boolean).join(" ");
-        const found = await ctx.call({ step: "place lookup", endpointId: "serper-places", jobId: "maps.place.get", input: { q, num: 1 } }, firstPlace, () => 0);
+        const found = await ctx.call({ step: "place lookup", endpointId: "serper-places", jobId: "maps.place.get", input: placeLookupInput(e) }, firstPlace, () => 0);
         if (!found.ok || !found.value) return [];
         target = { ...e, cid: found.value.cid, placeId: found.value.placeId };
       }
@@ -106,14 +110,14 @@ export const SOURCE_DEFS: SourceDef[] = [
     id: "app_store",
     label: "App Store",
     applies: (e) => Boolean(e.appStoreId),
-    lines: (_e, pages) => [{ step: "reviews", endpointId: "searchapi-io-apple-product-reviews", jobId: "reviews.appstore.reviews", maxCalls: pages }],
+    lines: (e, pages) => [{ step: "reviews", endpointId: "searchapi-io-apple-product-reviews", jobId: "reviews.appstore.reviews", maxCalls: pages, firstInput: { product_id: e.appStoreId, country: "us", page: 1 } }],
     collect: (e, ctx) => numberedPages(e, ctx, "app_store", "searchapi-io-apple-product-reviews", "reviews.appstore.reviews", { product_id: e.appStoreId, country: "us" }),
   },
   {
     id: "google_play",
     label: "Google Play",
     applies: (e) => Boolean(e.playPackage),
-    lines: () => [{ step: "reviews", endpointId: "anysite-api-google-play-apps-reviews", jobId: "api.google.play.apps.reviews", maxCalls: 1 }],
+    lines: (e, pages) => [{ step: "reviews", endpointId: "anysite-api-google-play-apps-reviews", jobId: "api.google.play.apps.reviews", maxCalls: 1, firstInput: { package: e.playPackage, count: Math.min(100, pages * 20), sort: "newest" } }],
     async collect(e, ctx) {
       const r = await ctx.call(
         { step: "reviews", endpointId: "anysite-api-google-play-apps-reviews", jobId: "api.google.play.apps.reviews", input: { package: e.playPackage, count: Math.min(100, ctx.pages * 20), sort: "newest" } },
@@ -127,7 +131,7 @@ export const SOURCE_DEFS: SourceDef[] = [
     id: "tripadvisor",
     label: "Tripadvisor",
     applies: (e) => Boolean(e.tripadvisorId),
-    lines: (_e, pages) => [{ step: "reviews", endpointId: "searchapi-io-tripadvisor-reviews", jobId: "search.tripadvisor-reviews", maxCalls: pages }],
+    lines: (e, pages) => [{ step: "reviews", endpointId: "searchapi-io-tripadvisor-reviews", jobId: "search.tripadvisor-reviews", maxCalls: pages, firstInput: { place_id: e.tripadvisorId, page: 1 } }],
     collect: (e, ctx) => numberedPages(e, ctx, "tripadvisor", "searchapi-io-tripadvisor-reviews", "search.tripadvisor-reviews", { place_id: e.tripadvisorId }),
   },
 ];

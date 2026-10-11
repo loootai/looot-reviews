@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { analyze } from "./analyze";
-import { LoootError, TERMINAL_STATUSES, type LoootRunner } from "./looot";
+import type { Ledger } from "./budget";
+import { LoootError, TERMINAL_STATUSES, type LoootRun, type LoootRunner } from "./looot";
 import { toMicros } from "./money";
 import { SOURCE_DEFS, type CallCtx, type CallLine, type SourceDef } from "./sources";
 import { SpendGuard, type PriceMap } from "./spend";
@@ -43,7 +44,16 @@ export function buildPlan(entities: Entity[], sources: SourceId[], pages: number
   return { lines, skipped, maxMicros, minMicros, capMicros, pages, withinCap: maxMicros <= capMicros };
 }
 
-/** Stable key for one (endpoint, input). The same input replays the stored run and is never charged twice. `tag` starts a fresh pull. */
+/** Hash of what a paid call asks for: endpoint and input, with sorted keys and lowercased text. Guards the short key against a collision. */
+export function callFingerprint(endpointId: string, input: Record<string, unknown>): string {
+  const norm = (v: unknown): unknown => (typeof v === "string" ? v.trim().toLowerCase() : Array.isArray(v) ? v.map(norm) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, x]) => [k, norm(x)])) : v);
+  return createHash("sha256").update(JSON.stringify([endpointId, norm(input)])).digest("hex");
+}
+
+/**
+ * Stable key for one (endpoint, input). No date or time goes in, and no input of any call carries a date.
+ * The same input replays the stored result and is never charged twice. `tag` starts a fresh pull, with its own stable key.
+ */
 export function idempotencyKey(endpointId: string, input: Record<string, unknown>, tag = ""): string {
   const sorted = Object.fromEntries(Object.entries(input).sort(([a], [b]) => a.localeCompare(b)));
   return `looot-reviews:${endpointId}:${createHash("sha256").update(JSON.stringify([endpointId, sorted, tag])).digest("hex").slice(0, 24)}`;
@@ -59,15 +69,29 @@ export interface RunOptions {
   unpriced?: string[];
   today: string;
   freshTag?: string;
+  /** Period budget, reservations and stored answers. Left out in tests that do not need it. */
+  ledger?: Ledger;
+  /** The clock for the ledger. Defaults to now. */
+  now?: Date;
   /** Optional step that renames and merges themes. Never required. */
   refine?: Parameters<typeof analyze>[2];
   onProgress?: (run: SourceRun) => void;
   defs?: SourceDef[];
 }
 
+/** A ledger write that fails (a locked file) must not hide a call that already ran. The reservation then stays until the next reconcile or the hard expiry. */
+async function quiet(fn: () => Promise<void> | undefined): Promise<void> {
+  try {
+    await fn();
+  } catch {
+    // The call result is already in hand; the reservation stays held, which errs on the side of spending less.
+  }
+}
+
 /**
  * Makes the calls one after another and builds the report.
- * Before each call the guard checks the cap. A refused call costs nothing.
+ * Check order for each call: the quote, the per-run cap, a stored answer, the period budget (an atomic reservation), then the call.
+ * A refused call costs nothing. A finished call is stored, so the same request is answered later with no call.
  * A call still going when waiting stops is "pending", counts at its quoted price, and ends that source.
  * A failed call costs nothing.
  */
@@ -93,26 +117,46 @@ export async function runPlan(opts: RunOptions): Promise<Report> {
           if (stop) return { ok: false };
           if (unpriced.has(spec.endpointId)) { push({ ...base, state: "blocked", costMicros: 0, reviewCount: 0, message: "The live price could not be read, so the call was not made." }); return { ok: false }; }
           if (!guard.canAfford(price)) { push({ ...base, state: "blocked", costMicros: 0, reviewCount: 0, message: `Spend cap reached (${guard.describe()}).` }); stop = true; return { ok: false }; }
+          const key = idempotencyKey(spec.endpointId, spec.input, opts.freshTag);
+          const fp = callFingerprint(spec.endpointId, spec.input);
+          const ledger = opts.ledger;
+          const at = opts.now ?? new Date();
+          const finish = (res: LoootRun, cost: number, note?: string) => {
+            const value = parse(res.result);
+            const n = count(value);
+            push({ ...base, state: "completed", runId: res.runId, costMicros: cost, reviewCount: n, message: note ?? (n === 0 && spec.step !== "place lookup" ? "The provider returned no reviews for this input." : undefined) });
+            return value;
+          };
+          if (ledger) {
+            const stored = await ledger.recall(key, fp, at);
+            if (stored) return { ok: true, value: finish(stored, 0, "Answered from the stored result. No call, no charge.") };
+            const held = await ledger.reserve(key, price, at, fp);
+            if (!held.ok) { push({ ...base, state: "blocked", costMicros: 0, reviewCount: 0, message: held.message }); stop = true; return { ok: false }; }
+          }
           try {
-            const res = await opts.looot.runAndWait(spec.endpointId, spec.input, idempotencyKey(spec.endpointId, spec.input, opts.freshTag));
+            const res = await opts.looot.runAndWait(spec.endpointId, spec.input, key);
             if (!TERMINAL_STATUSES.has(res.status)) {
+              // Still running at looot: the reservation stays until the run ends. It is never recorded as failed at zero.
               guard.record(price);
+              await quiet(() => ledger?.attach(key, res.runId));
               push({ ...base, state: "pending", runId: res.runId, costMicros: price, reviewCount: 0, message: `Still ${res.status} when waiting stopped. Not failed. Run the same command again; the stored run is replayed and not charged twice.` });
               stop = true;
               return { ok: false };
             }
             if (res.status !== "completed") {
+              await quiet(() => ledger?.settle(key, fp, toMicros(res.actualCost), at));
               push({ ...base, state: "failed", runId: res.runId, costMicros: 0, reviewCount: 0, message: res.error?.message ?? `The run ended as ${res.status}. Nothing was charged.` });
               stop = true;
               return { ok: false };
             }
             const cost = res.actualCost === null || res.actualCost === undefined ? price : toMicros(res.actualCost);
             guard.record(cost);
-            const value = parse(res.result);
-            const n = count(value);
-            push({ ...base, state: "completed", runId: res.runId, costMicros: cost, reviewCount: n, message: n === 0 && spec.step !== "place lookup" ? "The provider returned no reviews for this input." : undefined });
-            return { ok: true, value };
+            await quiet(() => ledger?.settle(key, fp, cost, at, res));
+            return { ok: true, value: finish(res, cost) };
           } catch (err) {
+            // An HTTP answer from looot means the call did not run, so the reservation goes back. A network error is unknown:
+            // the request may have been accepted, so the reservation stays until the hard expiry or a replay settles it.
+            if (err instanceof LoootError) await quiet(() => ledger?.release(key));
             const msg = err instanceof LoootError ? `${err.message}${err.code ? ` (${err.code})` : ""}` : (err as Error).message;
             push({ ...base, state: "failed", costMicros: 0, reviewCount: 0, message: msg });
             stop = true;
@@ -126,4 +170,18 @@ export async function runPlan(opts: RunOptions): Promise<Report> {
 
   const analysis = await analyze(opts.entities, reviews, opts.refine, new Date(`${opts.today}T12:00:00Z`));
   return { version: 1, createdAt: `${opts.today}T12:00:00.000Z`, mode: "live", entities: opts.entities, reviews, runs, spendMicros: guard.spentMicros, capMicros: opts.plan.capMicros, ...analysis };
+}
+
+/**
+ * What the plan can still charge: the most each line can cost, unless its first call has a stored answer in the ledger.
+ * A repeat of a finished pull costs 0 here, so the up-front budget check does not refuse a request that is answered with no call.
+ * A line whose first input is not known before the run (reviews after a place lookup) counts in full.
+ */
+export async function chargeableMicros(plan: Plan, ledger: Ledger, opts: { freshTag?: string; now?: Date } = {}): Promise<number> {
+  let total = 0;
+  for (const line of plan.lines) {
+    const stored = line.firstInput ? await ledger.recall(idempotencyKey(line.endpointId, line.firstInput, opts.freshTag), callFingerprint(line.endpointId, line.firstInput), opts.now ?? new Date()) : null;
+    if (!stored) total += line.maxCalls * line.priceMicros;
+  }
+  return total;
 }

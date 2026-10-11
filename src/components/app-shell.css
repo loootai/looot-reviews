@@ -222,6 +222,16 @@
   color: var(--ls-side-fg);
   font-variant-numeric: tabular-nums;
 }
+.ls-spend-head,
+.ls-spend-sub {
+  margin: 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--ls-side-mute);
+}
+.ls-spend-row + .ls-spend-row {
+  margin-top: 8px;
+}
 .ls-meter {
   height: 4px;
   margin-top: 6px;

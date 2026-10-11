@@ -95,7 +95,20 @@ Web UI on the same engine. Set `REVIEWS_ADMIN_PASSWORD` in `.env.local`, run `np
 
 ## Spending
 
-looot shows the price before each paid action, and so does this repo. The CLI prints the plan first and the web UI shows a table and the most the run can cost. The spend cap is `--max-spend` in the CLI, default $0.50. In the web UI the cap is `REVIEWS_SPEND_CAP_USD` on the server, default $0.50, and the page only shows it. A pull of five companies on Google Maps, two pages each, is at most $0.015 at list prices.
+looot shows the price before each paid action, and so does this repo. The CLI prints the plan first and the web UI shows a table and the most the run can cost. A pull of five companies on Google Maps, two pages each, is at most $0.015 at list prices.
+
+Four limits stand between a request and a charge, checked in this order: the quote, the cap per pull, the period budget, then the call.
+
+- The quote is printed first. The cap per pull is `--max-spend` in the CLI, default $0.50, and `REVIEWS_SPEND_CAP_USD` for the web UI (default $0.50; the page shows it and cannot change it). A cap in a request body is ignored. The web UI allows 6 paid pulls per session in 10 minutes.
+- The period budget caps all pulls together: a daily and a monthly amount (UTC), $10 and $50 until you change them. The owner changes them on the Costs page of the web UI, or sets the starting values with `LOOOT_REVIEWS_DAILY_USD` and `LOOOT_REVIEWS_MONTHLY_USD`. A request to `/api/run` cannot carry a budget: a request with a budget field is refused with 400. The CLI refuses a pull whose chargeable quote is above what is left, unless you pass `--partial`.
+- Before each paid call the app reserves its list price in `budget.json` (in `LOOOT_REVIEWS_DATA_DIR`, default `.looot-data`), under a lock file, and refuses the call if used plus reserved plus the price would pass the daily or the monthly budget. Two requests started together cannot both pass. When the call ends the reservation becomes the real charge. A call looot refused with an HTTP answer releases it. A call still running at looot (`pending`) keeps its reservation: it is never recorded as failed at $0 and the budget is never handed back early.
+- The next pull looks up every pending call with `GET /v1/runs/{id}` and settles the ones that ended, to their real cost. If looot cannot be reached, or the app died before it got a run id, the reservation stays for 24 hours and is then released.
+- The sidebar and the Costs page show used, reserved and remaining for today and this month. At the budget the pull is refused with a message that names the limit.
+- Every call has a stable key made from the endpoint and the normalised input. No date or time goes in, and none of the calls this repo makes carries a date in its input. A finished call is stored in `budget.json` for 40 days. Repeating the same request is answered from the stored result: no call, no charge, and the up-front budget check ignores it. If a stored result is missing, looot replays the same key without charging again.
+- A fresh pull is always explicit. `--fresh <tag>` gives every call a new key derived from the tag, and the tag is the only thing that changes it. Reviews sort by newest, so a stored pull shows the reviews as they were when it ran. Pass a new tag, for example the month, to read newer ones.
+- The looot token balance is the final limit. Fund a dedicated token with only what you are willing to spend, and keep the budget below it.
+
+The budget lives in a file, so run one instance on a disk that persists. Several instances, or a serverless host with a throwaway disk, do not share it.
 
 Prices are per-call list prices in the public looot catalog on 2026-10-10. The CLI reads live prices before running and uses these only for `--dry-run` or when the catalog cannot be read.
 
@@ -114,9 +127,9 @@ A typical run is five Google Maps companies at 2 pages each, at most $0.015 (the
 Rules the code enforces.
 
 - The price of every call is shown before the call. The CLI prints the plan first. The web UI shows a table and the most the run can cost.
-- A per-run spend cap is enforced before each call. A call that would pass the cap is not made and is marked "blocked".
-- Each call has a stable idempotency key made from the endpoint and the input. Running the same input again replays the stored run and is not charged twice. `--fresh <tag>` changes the key when you want a new pull.
-- A run still going when waiting stops is "pending", never "failed". It counts against the cap at its quoted price until it settles, and it ends that source for this run.
+- A per-run spend cap is enforced before each call. A call that would pass the cap, or the period budget, is not made and is marked "blocked".
+- Each call has a stable idempotency key made from the endpoint and the input. Running the same input again is answered from the stored result and is not charged twice. `--fresh <tag>` changes the key when you want a new pull.
+- A run still going when waiting stops is "pending", never "failed". It counts against the cap at its quoted price, and keeps its reservation in the period budget, until it settles. It ends that source for this run.
 - A failed run costs nothing, and the report says why.
 - Pages after the first happen only when the provider says there are more, so the quote is a maximum.
 
@@ -136,8 +149,8 @@ A test reads `src/app` and fails if a route is missing from `src/lib/auth/routes
 | --- | --- | --- |
 | Public by design | 4 routes | `/api/health`, `/login`, `/api/auth/login`, `/api/auth/logout` |
 | Public static files | 2 | `/favicon.ico`, `/brand/*` |
-| Admin pages | 3 | `/` (overview), `/themes`, `/new` |
-| Admin API | 2 | `/api/quote` (free), `/api/run` (paid: looot balance and the optional LLM key) |
+| Admin pages | 4 | `/` (overview), `/themes`, `/new`, `/costs` (budget and cost) |
+| Admin API | 3 | `/api/quote` (free), `/api/run` (paid: looot balance and the optional LLM key), `/api/budget` (read, and change the period budget) |
 
 There are no webhooks, server actions or export routes. Any path not listed is treated as admin.
 
@@ -154,6 +167,7 @@ There are no webhooks, server actions or export routes. Any path not listed is t
 ### Money
 
 - The cap for a web pull is `REVIEWS_SPEND_CAP_USD` on the server (default $0.50). The request body has no cap field, and a `maxSpendUsd`, `capUsd` or similar value in it is ignored.
+- The period budget (`PUT /api/budget`) is changed only by the signed-in owner, with the CSRF token. A run request cannot raise it, and one that carries a budget field is refused. See [Spending](#spending). The budget file needs one instance on a persistent disk. The looot token balance is the final limit, so give the app a token funded with only what you are willing to spend.
 - `/api/run` still needs `confirmedMaxMicros` from a quote the person saw. It refuses with 409 when the live price is higher.
 - A session may start 6 pulls in 10 minutes. The seventh gets 429. The counter lives in memory in one process, so behind several instances rate limit at your proxy too.
 - The same pull can spend a second key, `REVIEWS_LLM_API_KEY`, for the theme step. The route is behind the same gate and limit.

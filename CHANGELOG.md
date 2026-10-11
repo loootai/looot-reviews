@@ -2,6 +2,27 @@
 
 Built from the GitHub release notes. Each version links to its release page.
 
+## 0.1.5 (2026-10-11)
+
+Spend limits, version 2. Before this, a pull was limited only by the cap per pull, an in-memory rate limit and the token balance. Nothing limited spend across pulls, and two requests started together could both pass the cap.
+
+What changed
+
+- Period budget: a daily and a monthly amount (UTC), $10 and $50 by default, saved in `budget.json` in `LOOOT_REVIEWS_DATA_DIR`. The signed-in owner changes it on the new Costs page (`PUT /api/budget`). A run request cannot raise it, and one that carries a budget field is refused with 400. The spend cap per pull still comes only from the server (`REVIEWS_SPEND_CAP_USD`); a cap in a request is ignored.
+- Reserve then settle: each paid call reserves its list price under a lock file before it is made, and is refused if used plus reserved plus the price would pass either budget. The reservation becomes the real cost when the call ends and goes back if looot refused the call. A call still running keeps its reservation and is never counted as $0. The next pull looks up pending calls with `GET /v1/runs/{id}` and settles them. A reservation that cannot be looked up is released after 24 hours.
+- Stored results: a finished call is stored under its stable key for 40 days, so the same request is answered with no call and no charge. The up-front budget check ignores calls that have a stored answer.
+- Stable keys: keys were already free of any date. This release checked every call input for a hidden date and found none, and a test now fails if a date enters a key. `--fresh <tag>` is still the explicit way to pull again.
+- The sidebar spend panel and the Costs page show used, reserved and remaining for today and this month. The CLI refuses a pull above what is left of the budget unless `--partial` is passed.
+- README: the Spending and Securing a deployment sections describe the new limits. The token balance is still the final limit.
+
+For upgraders
+
+- No migration. This repo has no database. `budget.json` is a new file, created in `LOOOT_REVIEWS_DATA_DIR` (default `.looot-data`) on first use. Run one instance on a persistent disk, since the file is not shared between hosts.
+- `/api/budget` and `/costs` are new admin routes. The route map and its tests include them.
+- Keys are unchanged, so looot still replays earlier pulls without a new charge.
+
+[Release page](https://github.com/loootai/looot-reviews/releases/tag/v0.1.5)
+
 ## 0.1.4 (2026-10-11)
 
 Security release. Versions 0.1.3 and older had no admin authentication. Anyone who could reach a running copy could read the saved pull and start paid pulls on your looot token and your LLM key. If you run any earlier version on a host other people can reach, upgrade now and set an admin password.

@@ -3,13 +3,14 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { parse as parseYaml } from "yaml";
 import { demoReport } from "@/demo/seed";
+import { Budget, budgetFile, defaultLimits } from "@/lib/budget";
 import { today } from "@/lib/clock";
 import { refinerFromEnv } from "@/lib/llm";
-import { LoootError, loootFromEnv, type LoootRunner } from "@/lib/looot";
-import { usdPrecise } from "@/lib/money";
+import { LoootError, loootFromEnv, type LoootRun, type LoootRunner } from "@/lib/looot";
+import { usd, usdPrecise } from "@/lib/money";
 import { renderPlan, reportToMarkdown, reviewsToCsv } from "@/lib/output";
 import { ENDPOINT_IDS, FALLBACK_PRICES, PRICES_AS_OF, fetchPrices, type PriceResult } from "@/lib/prices";
-import { buildPlan, runPlan } from "@/lib/runner";
+import { buildPlan, chargeableMicros, runPlan } from "@/lib/runner";
 import { parseEntity } from "@/lib/sources";
 import { parseCapUsd } from "@/lib/spend";
 import { SOURCE_IDS, type Entity, type Report, type SourceId } from "@/lib/types";
@@ -24,12 +25,15 @@ export const HELP = `Usage: npm run reviews -- --target "Blue Door Cafe @ Austin
   --sources <list>      google_maps,app_store,google_play,tripadvisor. Default: every source the entities have an id for.
   --pages <n>           Review pages per source, 1 to 5. Default: 2 (about 40 Google Maps reviews).
   --max-spend <usd>     Hard cap for the run in dollars. Default: 0.50
+  --partial             Run until the cap or the period budget is reached, even when the quote is above what is left
   --out <dir>           Where reviews.json, reviews.csv and brief.md go. Default: out
   --dry-run             Print the calls and the list-price total. Make no looot call.
   --fresh <tag>         Pull again even if the same input ran before. Charged again.
   --demo                Write the demo report (invented shops). No token, no call.
 
 Needs LOOOT_TOKEN, except with --dry-run or --demo.
+The period budget (daily and monthly) lives in .looot-data/budget.json (LOOOT_REVIEWS_DATA_DIR). LOOOT_REVIEWS_DAILY_USD and
+LOOOT_REVIEWS_MONTHLY_USD set the starting amounts (default 10 and 50) until the owner saves new ones in the web UI.
 Optional LLM theme step: set REVIEWS_LLM_API_KEY and REVIEWS_LLM_MODEL. Without them, themes come from keywords only.`;
 
 export interface CliDeps {
@@ -78,6 +82,7 @@ export async function main(argv: string[], deps: CliDeps): Promise<number> {
         "max-spend": { type: "string", default: "0.50" },
         out: { type: "string", default: "out" },
         "dry-run": { type: "boolean", default: false },
+        partial: { type: "boolean", default: false },
         fresh: { type: "string" },
         demo: { type: "boolean", default: false },
         help: { type: "boolean", default: false },
@@ -163,11 +168,22 @@ export async function main(argv: string[], deps: CliDeps): Promise<number> {
   if (priced.unread.length > 0) deps.log(`\nThe live price of ${priced.unread.join(", ")} could not be read. Those calls will not run.`);
   deps.log(`\nRunning, at most ${usdPrecise(Math.min(plan.maxMicros, cap))}.\n`);
 
+  // Check order: quote, per-run cap, period budget, then the calls. Runs that ended since last time settle first.
+  const budget = new Budget(budgetFile(deps.env), defaultLimits(deps.env));
+  if ("getRun" in looot) await budget.reconcile(looot as unknown as { getRun(id: string): Promise<LoootRun> }).catch(() => undefined);
+  const room = await budget.status();
+  deps.log(`Budget left: ${usd(room.remainingMicros)} (${usd(room.day.remainingMicros)} today, ${usd(room.month.remainingMicros)} this month, ${usd(room.day.reservedMicros)} reserved).`);
+  if ((await chargeableMicros(plan, budget, { freshTag: args.fresh })) > room.remainingMicros && !args.partial) {
+    deps.err("Refused: the quote is above what is left of the period budget. Wait for the period to roll over, raise the budget on the Costs page of the web UI, or pass --partial to run until it is reached.");
+    return 2;
+  }
+
   const report = await runPlan({
     entities,
     sources,
     plan,
     looot,
+    ledger: budget,
     prices: priced.prices,
     unpriced: priced.unread,
     today: today(),

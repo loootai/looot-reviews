@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { Budget } from "@/lib/budget";
 import { FALLBACK_PRICES } from "@/lib/prices";
 import { main, type CliDeps } from "./main";
 
@@ -47,7 +48,7 @@ describe("cli", () => {
   it("runs, writes json, csv and markdown, and exits 0", async () => {
     const dir = mkdtempSync(join(tmpdir(), "rev-"));
     const { d } = deps({
-      env: { LOOOT_TOKEN: "x" },
+      env: { LOOOT_TOKEN: "x", LOOOT_REVIEWS_DATA_DIR: dir },
       looot: { runAndWait: async (e) => (e === "serper-places" ? { runId: "p", status: "completed", result: { places: [{ cid: "1" }] } } : { runId: "r", status: "completed", result: { reviews: [{ rating: 2, snippet: "Slow and the queue was long", isoDate: "2026-09-01", review_id: "a" }, { rating: 5, snippet: "Friendly staff", isoDate: "2026-09-02", review_id: "b" }] }, actualCost: 0.001 }) },
       prices: async () => ({ prices: FALLBACK_PRICES, source: "catalog", unread: [] }),
     });
@@ -58,7 +59,7 @@ describe("cli", () => {
 
   it("exits 1 and says pending when a run is still going", async () => {
     const dir = mkdtempSync(join(tmpdir(), "rev-"));
-    const { d, out } = deps({ env: { LOOOT_TOKEN: "x" }, looot: { runAndWait: async () => ({ runId: "r", status: "running" }) }, prices: async () => ({ prices: FALLBACK_PRICES, source: "catalog", unread: [] }) });
+    const { d, out } = deps({ env: { LOOOT_TOKEN: "x", LOOOT_REVIEWS_DATA_DIR: dir }, looot: { runAndWait: async () => ({ runId: "r", status: "running" }) }, prices: async () => ({ prices: FALLBACK_PRICES, source: "catalog", unread: [] }) });
     expect(await main(["--target", "Me @ Austin", "--out", dir], d)).toBe(1);
     expect(out.join("\n")).toMatch(/pending, not failed/);
   });
@@ -67,5 +68,21 @@ describe("cli", () => {
     const dir = mkdtempSync(join(tmpdir(), "rev-"));
     expect(await main(["--demo", "--out", dir], deps().d)).toBe(0);
     expect(JSON.parse(readFileSync(join(dir, "reviews.json"), "utf8")).mode).toBe("demo");
+  });
+
+  it("refuses a run whose quote is above what is left of the period budget, and runs with --partial", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rev-"));
+    await new Budget(join(dir, "budget.json")).setLimits({ dailyMicros: 1_500, monthlyMicros: 1_500 });
+    let calls = 0;
+    const { d, err } = deps({
+      env: { LOOOT_TOKEN: "x", LOOOT_REVIEWS_DATA_DIR: dir },
+      looot: { runAndWait: async (e) => { calls++; return e === "serper-places" ? { runId: "p", status: "completed", result: { places: [{ cid: "1" }] }, actualCost: 0.001 } : { runId: "r", status: "completed", result: { reviews: [] }, actualCost: 0.001 }; } },
+      prices: async () => ({ prices: FALLBACK_PRICES, source: "catalog", unread: [] }),
+    });
+    expect(await main(["--target", "Me @ Austin", "--pages", "1", "--out", dir], d)).toBe(2);
+    expect(err.join("")).toMatch(/above what is left of the period budget/);
+    expect(calls).toBe(0);
+    expect(await main(["--target", "Me @ Austin", "--pages", "1", "--partial", "--out", dir], d)).toBe(1);
+    expect(calls).toBe(1);
   });
 });
