@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/hero.png" alt="looot-reviews" width="100%"></p>
+![looot-reviews: a live run on 2026-10-13 comparing the App Store reviews of HubSpot, Salesforce and Pipedrive, with the overview and the themes page](docs/media/banner.png)
 
 # looot-reviews
 
@@ -7,6 +7,31 @@
 An open-source alternative to paid review monitoring such as ReviewTrackers, and to reading Google, App Store and Tripadvisor reviews by hand. ReviewTrackers' pricing page, read on 2026-10-10, says plans start "per location per month, paid annually" but did not show the amount to a browser, so no number is quoted here. This repo reads reviews on demand through one looot key and charges per call. A pull of five companies on Google Maps, two pages each, is at most $0.015 at list prices.
 
 Name your company or place and its competitors. looot-reviews pulls their reviews, groups them into themes with counts and example quotes, tracks the average rating by month and lists the themes where a competitor's customers are unhappy and yours are not.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/media/card-overview.png" alt="Who is rated higher: HubSpot 2.57, Salesforce 2.78 and Pipedrive 3.13 stars from 150 App Store reviews each, with the star spread and the change against the 90 days before"></td>
+<td width="50%"><img src="docs/media/card-trend.png" alt="The rating over time per company, one line each, from April 2021 to 2026"></td>
+</tr>
+<tr>
+<td><img src="docs/media/card-weak.png" alt="Where a rival's customers are unhappy: Salesforce Quality and Features, with the themes list below"></td>
+<td><img src="docs/media/card-themes.png" alt="Themes with counts and real quotes: Work, Ease of use and Features, with a bar per company"></td>
+</tr>
+<tr>
+<td><img src="docs/media/card-run.png" alt="The CLI plan and the run: nine calls at $0.0040, 450 reviews, $0.0360 spent of a $0.1000 cap"></td>
+<td></td>
+</tr>
+</table>
+
+The banner, the five cards and the walkthrough are the real web UI after a live paid run on 2026-10-13: HubSpot against Salesforce and Pipedrive on the App Store (see [Live run](#live-run-three-crm-apps-on-the-app-store)). They say "Live run · 2026-10-13". Reviewer names are never stored, so none appear. The invented-shop screenshots further down are "Demo data".
+
+![A 24-second walkthrough of the web UI: the overview, the rating chart, the weak spots and the themes page](docs/media/demo.gif)
+
+The same walkthrough as MP4: [docs/media/demo.mp4](docs/media/demo.mp4).
+
+Logos and names belong to their owners. Public data from a live run on 2026-10-13. No affiliation.
+
+Demo data, invented shops.
 
 ![Overview, light theme](docs/screenshots/overview-light.png)
 
@@ -92,6 +117,30 @@ Options: `--config <file>`, `--sources google_maps,app_store,google_play,tripadv
 Web UI on the same engine. Set `REVIEWS_ADMIN_PASSWORD` in `.env.local`, run `npm run dev`, open http://localhost:3000, sign in, go to `/new`, enter the target and the competitors, press "Show the price", then "Run for up to ...". The run button works only on a quote you have seen. If the live price rose above the quote, the server refuses with a 409 and asks you to quote again. The web form reads Google Maps only; use the CLI and a YAML file to add the other sources. The last pull is saved to `.looot-data/latest.json` on your machine.
 
 ![New pull page](docs/screenshots/new-light.png)
+
+## Live run: three CRM apps on the App Store
+
+Run on 2026-10-13 (UTC) with `appStoreId` for HubSpot (1107711722), Salesforce (404249815) and Pipedrive (921456160), `--sources app_store --pages 3`. The config is three entries, one id each.
+
+```bash
+npm run reviews -- --config reviews.yaml --sources app_store --pages 3 --max-spend 0.10 --out out
+```
+
+- Calls: 9, one endpoint (`searchapi-io-apple-product-reviews`), 3 pages per app.
+- Charged: $0.0360 ($0.0040 a call), from the CLI's own log. All 9 calls completed. The first run id is `run_31062b1c476f47d4acd6032e6e1a491c`, and `looot runs get` shows it as completed. All nine ids are in `runs` of `out/reviews.json`.
+- Result: 450 reviews, 150 per app, 17 themes, 2 weak spots.
+- Ratings: HubSpot 2.57, Salesforce 2.78, Pipedrive 3.13. These are the 150 newest reviews of each app, not the store rating and App Store reviews are about the mobile apps.
+
+What worked: the first real pull parsed without a fix, with no failed call and no empty page. The weak-spot list is short and readable.
+
+What was off:
+
+- Found themes pick up product names. "Hubspot", "Salesforce", "Pipedrive" and "Work" show up as themes because many reviews repeat the word. They are noise, not insight.
+- The 150 Salesforce reviews reach back only to February 2025, while HubSpot goes back to November 2021 and Pipedrive to April 2021, so the lines on the rating chart do not cover the same period.
+- The weak-spot rule found two items, both on Salesforce, and both rest on 5 and 8 mentions. Treat them as leads to read, not conclusions.
+- The web UI's budget meter reads `budget.json` in its own data folder, so it shows $0.00 used after a CLI pull that wrote its budget elsewhere. The spend line on the overview ($0.04 of a $0.10 cap) is correct.
+
+Everything in the banner, the cards and the walkthrough came from this run, loaded as the web UI's saved pull. Nothing in them is invented.
 
 ## Spending
 
@@ -245,7 +294,7 @@ How to file an issue. Open an issue at https://github.com/loootai/looot-reviews/
 
 ## Status
 
-No paid looot run was made while building this. The code that turns a provider response into reviews is built from the endpoint descriptions in the catalog, from the field names those providers document, and from fixtures written to match. It reads several alias names for each field and skips rows it cannot read, but the first real pull may show a field it misses. If a provider returns reviews that come out empty, open an issue with the raw response (see Troubleshooting), and add the alias in `src/lib/normalize.ts`. The optional LLM step was tested only against a mocked HTTP endpoint. The unit tests mock all HTTP.
+One paid run has been made, the App Store one in [Live run](#live-run-three-crm-apps-on-the-app-store). The App Store parser read real responses without a change. The Google Maps, Google Play and Tripadvisor parsers are still built from the endpoint descriptions in the catalog and fixtures, and have not met a real response. Each reads several alias names for every field and skips rows it cannot read. If a provider returns reviews that come out empty, open an issue with the raw response (see Troubleshooting), and add the alias in `src/lib/normalize.ts`. The optional LLM step was tested only against a mocked HTTP endpoint. The unit tests mock all HTTP.
 
 ## Develop
 

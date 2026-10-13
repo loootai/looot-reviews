@@ -2,6 +2,11 @@
 
 Built from the GitHub release notes. Each version links to its release page.
 
+## Unreleased
+
+- Fix: signing in from Chrome failed with "Cross-site request refused." The app sends `Referrer-Policy: no-referrer`, and Chrome then sends `Origin: null` on the sign-in form post. `sameOrigin` now falls back to `Sec-Fetch-Site` when the origin is `null`, and still refuses a `null` origin from another site or with no `Sec-Fetch-Site`.
+- Docs: live-run section, banner, cards and walkthrough from a real App Store pull.
+
 ## 0.1.5 (2026-10-11)
 
 Spend limits, version 2. Before this, a pull was limited only by the cap per pull, an in-memory rate limit and the token balance. Nothing limited spend across pulls, and two requests started together could both pass the cap.
